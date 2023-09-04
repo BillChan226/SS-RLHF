@@ -479,7 +479,8 @@ from datasets import load_dataset
 from peft import LoraConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, logging, set_seed
-
+import sys
+sys.path.append("/home/xyq/.conda/SS-RLHF/")
 from trl import SFTTrainer
 from trl.trainer import ConstantLengthDataset
 
@@ -579,19 +580,19 @@ def prepare_sample_text(item):
     for idx, i in enumerate(item["facts"]):
         if i[-1] != '.':
             i = i + '.'
-        order = ""
-        if idx == 0:
-            order = "Firstly, "
-        if idx == 1:
-            order = "Secondly, "
-        if idx == 2:
-            order = "Thirdly, "
-        if idx == 3:
-            order = "Forthly, "
+        # order = ""
+        # if idx == 0:
+        #     order = "Firstly, "
+        # if idx == 1:
+        #     order = "Secondly, "
+        # if idx == 2:
+        #     order = "Thirdly, "
+        # if idx == 3:
+        #     order = "Forthly, "
 
         # if idx == len(item["facts"]) - 1:
         #     order = "Finally, "
-        reference = reference + order + i + ' '
+        reference = reference + i + ' '
     
     reference = reference + "Thus the answer is " + judge
             
@@ -608,7 +609,7 @@ def prepare_sample_text(item):
 
     return text
 
-tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-2-7b-hf")
+tokenizer = AutoTokenizer.from_pretrained("gpt2-xl")
 
 
 if getattr(tokenizer, "pad_token", None) is None:
@@ -766,14 +767,18 @@ class ConstantLengthDataset(IterableDataset):
             # <PRE>: 32000
             # <MID>: 32002
             # <SUF>: 32001
-            prefix_token = 31000
-            suffix_token = 31001
-            middle_token = 31002
-            eot_token = 31003
+            # prefix_token = 31000
+            # suffix_token = 31001
+            # middle_token = 31002
+            prefix_token = 225
+            suffix_token = 226
+            middle_token = 227
+            eot_token = 228
             for tkidx, token_input in enumerate(tokenized_inputs):
                 argu_idx = []
                 for idx, token in enumerate(token_input):
-                    if token == 29889:
+                    #if token == 29889:
+                    if token == 13:
                         argu_idx.append(idx)
                 # print("token_input", token_input)
                 # print("argu_idx", argu_idx)
