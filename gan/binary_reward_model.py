@@ -3,9 +3,9 @@ import os
 
 from accelerate import Accelerator
 from datasets import load_dataset
-from peft import LoraConfig
+from peft import LoraConfig, TaskType
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, logging, set_seed, Trainer
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, logging, set_seed, Trainer, AutoModelForSequenceClassification
 import sys
 sys.path.append("/home/xyq/.conda/trl/")
 from trl import SFTTrainer
@@ -35,7 +35,7 @@ device = "cuda:1"
 print("loading pretrained reward model")
 model_name = "meta-llama/Llama-2-7b-hf"  # You can replace this with other GPT-2 variants if needed
 tokenizer = AutoTokenizer.from_pretrained(model_name)
-model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
+# model = AutoModelForCausalLM.from_pretrained(model_name).to(device)
 
 import torch.nn as nn
 
@@ -228,12 +228,13 @@ class ConstantLengthDataset(IterableDataset):
                 # print("example", example)
                 
 def create_datasets(tokenizer):
+    num_proc = 24
     dataset = load_dataset(
         dataset_name,
         data_dir="data/finetune",
         split="test",
         use_auth_token=True,
-        num_proc=1
+        num_proc=num_proc
         # streaming=args.streaming,
     )
 
@@ -243,6 +244,27 @@ def create_datasets(tokenizer):
     train_data = dataset["train"]
     valid_data = dataset["test"]
     print(f"Size of the train set: {len(train_data)}. Size of the validation set: {len(valid_data)}")
+    
+    original_columns = train_data.column_names
+    # preprocess the dataset and filter out QAs that are longer than script_args.max_length
+    train_data = train_data.map(
+        batched=True,
+        num_proc=num_proc,
+        remove_columns=original_columns,
+    )
+    train_data = train_data.filter(
+        lambda x: len(x["input_ids"]) <= script_args.max_length
+    )
+
+    valid_data = valid_data.map(
+        batched=True,
+        num_proc=num_proc,
+        remove_columns=original_columns,
+    )
+    valid_data = valid_data.filter(
+        lambda x: len(x["input_ids"]) <= max_length
+    )
+
 
     chars_per_token = chars_token_ratio(train_data, tokenizer)
     print(f"The character to token ratio of the dataset is: {chars_per_token:.2f}")
@@ -304,7 +326,7 @@ train_dataset, valid_dataset = create_datasets(tokenizer)
 #     # input("hold on")
 
 training_args = TrainingArguments(
-    output_dir='/home/xyq/.conda/SS-RLHF/model/binary_reward',
+    output_dir='/home/xyq/.conda/trk/model/binary_reward/',
     num_train_epochs=3,
     per_device_train_batch_size=8,
     evaluation_strategy="epoch",
@@ -312,34 +334,76 @@ training_args = TrainingArguments(
     save_steps=10,
 )
 
+# lora_config = LoraConfig(
+#     r=16,
+#     lora_alpha=32,
+#     lora_dropout=0.05,
+#     bias="none",
+#     task_type="CAUSAL_LM",
+# )
+
 lora_config = LoraConfig(
-    r=16,
+    task_type=TaskType.SEQ_CLS,
+    inference_mode=False,
+    r=8,
     lora_alpha=32,
-    lora_dropout=0.05,
-    bias="none",
-    task_type="CAUSAL_LM",
+    lora_dropout=0.1,
 )
 
-model = get_peft_model(model, lora_config)
+# model = get_peft_model(model, lora_config)
     
-# Define the Trainer
-trainer = Trainer(
+    
+model = AutoModelForSequenceClassification.from_pretrained(
+    model_name, num_labels=1, torch_dtype=torch.bfloat16
+)
+model = get_peft_model(model, lora_config)
+model.print_trainable_parameters()
+
+# Need to do this for gpt2, because it doesn't have an official pad token.
+tokenizer.pad_token = tokenizer.eos_token
+model.config.pad_token_id = tokenizer.eos_token_id
+model.config.use_cache = not script_args.gradient_checkpointing
+num_proc = 24  # Can adjust to be higher if you have more processors.
+
+
+
+class RewardTrainer(Trainer):
+    # Define how to compute the reward loss. We use the InstructGPT pairwise logloss: https://arxiv.org/abs/2203.02155
+    def compute_loss(self, model, inputs, return_outputs=False):
+        rewards = model(input_ids=inputs["input_ids"])[0]
+        print("rewards", rewards)
+        loss = -nn.functional.logsigmoid(rewards_j - rewards_k).mean()
+        if return_outputs:
+            return loss, {"rewards_j": rewards_j, "rewards_k": rewards_k}
+        return loss
+    
+trainer = RewardTrainer(
     model=model,
     args=training_args,
-    max_steps=5000,
-    learning_rate=1e-5,
-    data_collator=None,
-   # peft_config=lora_config,
     train_dataset=train_dataset,
     eval_dataset=valid_dataset,
-    lr_scheduler_type = "cosine",
-    no_gradient_checkpointing = False
+    # compute_metrics=compute_metrics,
+    # data_collator=RewardDataCollatorWithPadding(tokenizer=tokenizer, max_length=script_args.max_length),
 )
 
-print_trainable_parameters(trainer.model)
+# # Define the Trainer
+# trainer = Trainer(
+#     model=model,
+#     args=training_args,
+#     max_steps=5000,
+#     learning_rate=1e-5,
+#     data_collator=None,
+#    # peft_config=lora_config,
+#     train_dataset=train_dataset,
+#     eval_dataset=valid_dataset,
+#     lr_scheduler_type = "cosine",
+#     no_gradient_checkpointing = False
+# )
 
-print("Training...")
-trainer.train()
+# print_trainable_parameters(trainer.model)
 
-print("Saving last checkpoint of the model")
-trainer.model.save_pretrained("./final_checkpoint/")
+# print("Training...")
+# trainer.train()
+
+# print("Saving last checkpoint of the model")
+# trainer.model.save_pretrained("./final_checkpoint/")
