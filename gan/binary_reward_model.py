@@ -5,11 +5,11 @@ from accelerate import Accelerator
 from datasets import load_dataset
 from peft import LoraConfig
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, logging, set_seed
+from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, logging, set_seed, Trainer
 import sys
-sys.path.append("/home/xyq/.conda/SS-RLHF/")
+sys.path.append("/home/xyq/.conda/trl/")
 from trl import SFTTrainer
-from trl.trainer import ConstantLengthDataset
+# from trl.trainer import ConstantLengthDataset
 
 import random
 import warnings
@@ -29,7 +29,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-
+from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_int8_training
 # Load a pre-trained GPT-2 model and tokenizer
 device = "cuda:1"
 print("loading pretrained reward model")
@@ -94,12 +94,12 @@ def prepare_sample_text(item):
     """Prepare the text from a sample of the dataset."""
     # text = f"Question: {example['question']}\n\nAnswer: {example['response_j']}"
     # return text\
-    if np.random.rand() < 0.1:
+    if np.random.rand() < 0.2:
         query_tensors = false_tokenizer(item["question"], return_tensors="pt").to(device)
         response_tensors = false_generator.generate(**query_tensors, max_new_tokens=128)
         decoded_text = false_tokenizer.decode(response_tensors[0], skip_special_tokens=True)
         text = decoded_text + ' False'
-        
+         
     else:
         if item["answer"] == True:
             judge = "Yes."
@@ -187,6 +187,7 @@ class ConstantLengthDataset(IterableDataset):
                 try:
                     buffer.append(self.formatting_func(next(iterator)))
                     # print("buffer", buffer)
+                    # # print("buffer", buffer)
                     # input()
                     buffer_len += len(buffer[-1])
                 except StopIteration:
@@ -197,31 +198,17 @@ class ConstantLengthDataset(IterableDataset):
                         more_examples = False
                         break
             tokenized_inputs = self.tokenizer(buffer, truncation=False, add_special_tokens=True)["input_ids"]
-            #  find the index of element in tokenized_inputs that equals 29889
-            # special sentinel tokens
-            # ["<PRE>", "<SUF>", "<MID>"]
-            # <PRE>: 32000
-            # <MID>: 32002
-            # <SUF>: 32001
-            # prefix_token = 31000
-            # suffix_token = 31001
-            # middle_token = 31002
-            # eot_token = 31003
-            # prefix_token = 225
-            # suffix_token = 226
-            # middle_token = 227
-            # eot_token = 228
- 
+            # print("here")
             all_token_ids = []
             label_ids = []
             for tokenized_input in tokenized_inputs:
-                print("tokenized_input", tokenized_input)
+                # print("tokenized_input", tokenized_input)
                 label_token = tokenized_input[-1]
                 prompt_token = tokenized_input[:-1]
                 # all_token_ids.extend(prompt_token + [self.concat_token_id])
                 all_token_ids.extend(prompt_token)
 
-                label_ids.extend(label_token)
+                label_ids.extend([label_token])
                 # print("all_token_ids", all_token_ids)
                 # input()
             # examples = []
@@ -264,7 +251,7 @@ def create_datasets(tokenizer):
         tokenizer,
         train_data,
         formatting_func=prepare_sample_text,
-        infinite=True,
+        infinite=False,
         seq_length=1024,
         chars_per_token=chars_per_token,
     )
@@ -281,6 +268,19 @@ def create_datasets(tokenizer):
     
     return train_dataset, valid_dataset
 
+def print_trainable_parameters(model):
+    """
+    Prints the number of trainable parameters in the model.
+    """
+    trainable_params = 0
+    all_param = 0
+    for _, param in model.named_parameters():
+        all_param += param.numel()
+        if param.requires_grad:
+            trainable_params += param.numel()
+    print(
+        f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
+    )
 
 # Replace the last layer of the GPT-2 model with your custom cost function
 # model.transformer.h[-1] = RewardFunction(768, 1)
@@ -291,9 +291,9 @@ train_dataset, valid_dataset = create_datasets(tokenizer)
 #     query_tensors = batch["input_ids"]
 #     last_token = query_tensors[-1]
 #     # if true
-#     if last_token == 100:
+#     if last_token == 5852: # True
 #         label = [1, 0, 0]
-#     elif last_token == 101:
+#     elif last_token == 7700: # False
 #         label = [0, 1, 0]
     
 #     batch["attention_mask"] = tensor.ones(len(batch["input_ids"]-1))
@@ -312,10 +312,34 @@ training_args = TrainingArguments(
     save_steps=10,
 )
 
+lora_config = LoraConfig(
+    r=16,
+    lora_alpha=32,
+    lora_dropout=0.05,
+    bias="none",
+    task_type="CAUSAL_LM",
+)
+
+model = get_peft_model(model, lora_config)
+    
 # Define the Trainer
 trainer = Trainer(
     model=model,
     args=training_args,
+    max_steps=5000,
+    learning_rate=1e-5,
     data_collator=None,
+   # peft_config=lora_config,
     train_dataset=train_dataset,
+    eval_dataset=valid_dataset,
+    lr_scheduler_type = "cosine",
+    no_gradient_checkpointing = False
 )
+
+print_trainable_parameters(trainer.model)
+
+print("Training...")
+trainer.train()
+
+print("Saving last checkpoint of the model")
+trainer.model.save_pretrained("./final_checkpoint/")

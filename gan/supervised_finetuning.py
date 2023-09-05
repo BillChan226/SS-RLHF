@@ -495,6 +495,7 @@ import torch
 from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import IterableDataset
 from dataset import ConstantLengthDataset, prepare_sample_text
+from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_int8_training
 """
 Fine-Tune Llama-7b on SE paired dataset
 """
