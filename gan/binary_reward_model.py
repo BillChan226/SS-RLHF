@@ -228,7 +228,9 @@ class ConstantLengthDataset(IterableDataset):
                 # print("example", example)
                 
 def create_datasets(tokenizer):
+    
     num_proc = 24
+    max_length = 512
     dataset = load_dataset(
         dataset_name,
         data_dir="data/finetune",
@@ -253,7 +255,7 @@ def create_datasets(tokenizer):
         remove_columns=original_columns,
     )
     train_data = train_data.filter(
-        lambda x: len(x["input_ids"]) <= script_args.max_length
+        lambda x: len(x["input_ids"]) <= max_length
     )
 
     valid_data = valid_data.map(
