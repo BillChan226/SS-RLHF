@@ -15,7 +15,7 @@ model = AutoModelForCausalLM.from_pretrained(model_name).to("cuda:1")
 # eot: Ĩ 228
 
 
-query_text = "<PRE> Can a man give birth to a child? <SUF> Thus the answer is no. <MID>"
+query_text = "<PRE> <SUF> No. Aristotle is born in 384 B.C. and died in 322 B.C. The computer is not invented until the 19s. <MID>"
 
 query_tensors = tokenizer(query_text, return_tensors="pt").to("cuda:1")
 

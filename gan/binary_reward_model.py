@@ -5,7 +5,17 @@ from accelerate import Accelerator
 from datasets import load_dataset
 from peft import LoraConfig, TaskType
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, logging, set_seed, Trainer, AutoModelForSequenceClassification
+from transformers import (
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    HfArgumentParser,
+    PreTrainedTokenizerBase,
+    Trainer,
+    TrainerCallback,
+    TrainingArguments,
+    AutoModelForCausalLM
+)
+from transformers.utils import PaddingStrategy
 import sys
 sys.path.append("/home/xyq/.conda/trl/")
 from trl import SFTTrainer
@@ -23,13 +33,8 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import IterableDataset
 # from dataset import ConstantLengthDataset
 
-import random
-import warnings
-from collections import deque
-from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple, Union
-
 from peft import PeftConfig, PeftModel, get_peft_model, prepare_model_for_int8_training
+
 # Load a pre-trained GPT-2 model and tokenizer
 device = "cuda:1"
 print("loading pretrained reward model")
@@ -101,6 +106,7 @@ def prepare_sample_text(item):
         text = decoded_text + ' False'
          
     else:
+        print("item", item)
         if item["answer"] == True:
             judge = "Yes."
         else:
@@ -109,6 +115,7 @@ def prepare_sample_text(item):
         reference = judge + ' '
         
         for idx, i in enumerate(item["facts"]):
+            
             if i[-1] != '.':
                 i = i + '.'
 
@@ -250,6 +257,7 @@ def create_datasets(tokenizer):
     original_columns = train_data.column_names
     # preprocess the dataset and filter out QAs that are longer than script_args.max_length
     train_data = train_data.map(
+        prepare_sample_text,
         batched=True,
         num_proc=num_proc,
         remove_columns=original_columns,
@@ -259,6 +267,7 @@ def create_datasets(tokenizer):
     )
 
     valid_data = valid_data.map(
+        prepare_sample_text,
         batched=True,
         num_proc=num_proc,
         remove_columns=original_columns,
@@ -306,6 +315,40 @@ def print_trainable_parameters(model):
         f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
     )
 
+@dataclass
+class RewardDataCollatorWithPadding:
+    tokenizer: PreTrainedTokenizerBase
+    padding: Union[bool, str, PaddingStrategy] = True
+    max_length: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+    return_tensors: str = "pt"
+
+    def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
+        features_j = []
+        features_k = []
+        for feature in features:
+            features_j.append(
+                {
+                    "input_ids": feature["input_ids_j"],
+                    "attention_mask": feature["attention_mask_j"],
+                }
+            )
+            
+        batch_j = self.tokenizer.pad(
+            features_j,
+            padding=self.padding,
+            max_length=self.max_length,
+            pad_to_multiple_of=self.pad_to_multiple_of,
+            return_tensors=self.return_tensors,
+        )
+        
+        batch = {
+            "input_ids_j": batch_j["input_ids"],
+            "attention_mask_j": batch_j["attention_mask"],
+            "return_loss": True,
+        }
+        return batch
+    
 # Replace the last layer of the GPT-2 model with your custom cost function
 # model.transformer.h[-1] = RewardFunction(768, 1)
 train_dataset, valid_dataset = create_datasets(tokenizer)
@@ -385,7 +428,7 @@ trainer = RewardTrainer(
     train_dataset=train_dataset,
     eval_dataset=valid_dataset,
     # compute_metrics=compute_metrics,
-    # data_collator=RewardDataCollatorWithPadding(tokenizer=tokenizer, max_length=script_args.max_length),
+    data_collator=RewardDataCollatorWithPadding(tokenizer=tokenizer, max_length=script_args.max_length),
 )
 
 # # Define the Trainer
