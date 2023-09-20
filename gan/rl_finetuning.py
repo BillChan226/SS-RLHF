@@ -14,7 +14,8 @@
 # limitations under the License.
 from dataclasses import dataclass, field
 from typing import Optional
-
+import sys, os
+sys.path.append("/home/xyq/.conda/trl")
 import torch
 from datasets import load_dataset
 from peft import LoraConfig
@@ -24,7 +25,6 @@ from transformers import AutoTokenizer, HfArgumentParser, pipeline
 from trl import AutoModelForCausalLMWithValueHead, AutoModelForSeq2SeqLMWithValueHead, PPOConfig, PPOTrainer, set_seed
 from trl.core import LengthSampler
 import numpy as np
-
 
 tqdm.pandas()
 

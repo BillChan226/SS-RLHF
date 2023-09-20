@@ -14,7 +14,8 @@
 # limitations under the License.
 from dataclasses import dataclass, field
 from typing import Optional
-
+import sys
+sys.path.append("/home/xyq/.conda/trl")
 import torch
 from accelerate import Accelerator
 from datasets import load_dataset

@@ -14,7 +14,8 @@
 # limitations under the License.
 from dataclasses import dataclass, field
 from typing import Optional
-
+import sys
+sys.path.append("/home/xyq/.conda/trl")
 import torch
 from datasets import load_dataset
 from peft import LoraConfig
@@ -157,7 +158,6 @@ model = trl_model_class.from_pretrained(
     peft_config=peft_config,
 )
 
-
 tokenizer = AutoTokenizer.from_pretrained(config.model_name)
 
 # GPT-2 tokenizer has a pad token, but it is not eos_token by default. We need to set it to eos_token.
@@ -193,6 +193,8 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
     # Get response from gpt2
     response_tensors = ppo_trainer.generate(query_tensors, return_prompt=False, **generation_kwargs)
     batch["response"] = tokenizer.batch_decode(response_tensors)
+    print("response: ", batch["response"])
+    input()
 
     # Compute sentiment score
     texts = [q + r for q, r in zip(batch["query"], batch["response"])]
