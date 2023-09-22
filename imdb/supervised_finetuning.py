@@ -481,7 +481,7 @@ from peft import LoraConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, logging, set_seed
 import sys
-sys.path.append("/home/xyq/.conda/SS-RLHF/")
+sys.path.append("/home/xyq/.conda/trl/")
 from trl import SFTTrainer
 from trl.trainer import ConstantLengthDataset
 
@@ -506,7 +506,7 @@ os.environ['CURL_CA_BUNDLE'] = ''
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str, default="/home/xyq/.cache/huggingface/hub/models--meta-llama--Llama-2-7b-hf/snapshots/6fdf2e60f86ff2481f2241aaee459f85b5b0bbb9")
+    parser.add_argument("--model_path", type=str, default="/home/xyq/.cache/huggingface/hub/models--gpt2-xl/snapshots/33cdb5c0db5423c1879b1b9f16c352988e8754a8/")
     # parser.add_argument("--dataset_name", type=str, default="lvwerra/stack-exchange-paired")
     parser.add_argument("--dataset_name", type=str, default="imdb")
     parser.add_argument("--subset", type=str, default="data/finetune")
@@ -516,7 +516,7 @@ def get_args():
     parser.add_argument("--shuffle_buffer", type=int, default=5000)
 
     parser.add_argument("--seq_length", type=int, default=128)
-    parser.add_argument("--max_steps", type=int, default=5000)
+    parser.add_argument("--max_steps", type=int, default=8000)
     parser.add_argument("--batch_size", type=int, default=4)
     parser.add_argument("--gradient_accumulation_steps", type=int, default=1)
     parser.add_argument("--eos_token_id", type=int, default=49152)
@@ -535,7 +535,7 @@ def get_args():
     parser.add_argument("--output_dir", type=str, default="./checkpoints")
     parser.add_argument("--log_freq", default=1, type=int)
     parser.add_argument("--eval_freq", default=1000, type=int)
-    parser.add_argument("--save_freq", default=200, type=int)
+    parser.add_argument("--save_freq", default=1000, type=int)
 
     return parser.parse_args()
 
@@ -570,7 +570,7 @@ def print_trainable_parameters(model):
         f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
     )
 
-tokenizer = AutoTokenizer.from_pretrained("lvwerra/gpt2-imdb")
+tokenizer = AutoTokenizer.from_pretrained("/home/xyq/.cache/huggingface/hub/models--gpt2-xl/snapshots/33cdb5c0db5423c1879b1b9f16c352988e8754a8/")
 
 # tokenizer = AutoTokenizer.from_pretrained("/home/xyq/.cache/huggingface/hub/models--gpt2-xl/snapshots/33cdb5c0db5423c1879b1b9f16c352988e8754a8/")
 # tokenizer = AutoTokenizer.from_pretrained("/home/xyq/.cache/huggingface/hub/models--meta-llama--Llama-2-7b-hf/snapshots/6fdf2e60f86ff2481f2241aaee459f85b5b0bbb9")  #  ("lvwerra/gpt2-imdb")

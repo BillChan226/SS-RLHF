@@ -320,3 +320,126 @@ def PSM(example):
     }
 
     return input_dict
+
+
+
+
+def query_fim(idx, argu_idx, response_tensors):
+
+    response_tensors = response_tensors.cpu().detach().numpy().tolist()
+    # prefix_token = 3866
+    # middle_token = 13602
+    # suffix_token = 37333
+    # eot_token = 4720
+
+    prefix_token = 31000
+    suffix_token = 31001
+    middle_token = 31002
+    eot_token = 31003
+
+    rest_att = 0.2
+    # print("idx", idx)
+    # print("argu_idx", argu_idx)
+
+
+    # punctuation = [11, 13, 764, 837, 0, 30, 29847, 16317, 50256]
+
+    if idx == 0:
+        
+        middle = response_tensors[argu_idx[idx] + 1:argu_idx[idx+1]+1]
+        suffix = response_tensors[argu_idx[idx+1] + 1:]
+        prefix = response_tensors[:argu_idx[idx]+1]
+    else:
+        middle = response_tensors[argu_idx[idx-1] + 1:argu_idx[idx]+1]
+        suffix = response_tensors[argu_idx[idx] + 1:]
+        prefix = response_tensors[:argu_idx[idx-1]+1]
+
+    if idx == 0:
+        # focus = prefix
+        # attention_tensors = torch.tensor([1] * len(focus) + [rest_att] * len(middle) + [rest_att] * len(suffix))
+        
+        query_FIM = [middle_token] + middle + [suffix_token] + suffix + [prefix_token]
+        original_FIM = [middle_token] + middle + [suffix_token] + suffix + [prefix_token] + prefix + [eot_token]
+        attention_tensors = torch.tensor([rest_att] * len([middle_token] + middle + [suffix_token] + suffix + [prefix_token]) + [1] * (len(prefix)+1))
+
+        # action_to_assign = middle + suffix
+    elif idx == len(argu_idx) - 1: 
+        # focus = suffix
+        # attention_tensors = torch.tensor([rest_att] * len(prefix) + [rest_att] * len(middle) + [1] * len(focus))
+        query_FIM = [prefix_token] + prefix + [middle_token] + middle + [suffix_token]
+        original_FIM = [prefix_token] + prefix + [middle_token] + middle + [suffix_token] + suffix + [eot_token]
+        attention_tensors = torch.tensor([rest_att] * len([prefix_token] + prefix + [middle_token] + middle + [suffix_token]) + [1] * (len(suffix)+1))
+        # action_to_assign = 
+    else:
+        # focus = middle
+        # attention_tensors = torch.tensor([rest_att] * len(prefix) + [1] * len(focus) + [rest_att] * len(suffix))
+        query_FIM = [prefix_token] + prefix + [suffix_token] + suffix + [middle_token]
+        original_FIM = [prefix_token] + prefix + [suffix_token] + suffix + [middle_token] + middle + [eot_token]
+        attention_tensors = torch.tensor([rest_att] * len([prefix_token] + prefix + [suffix_token] + suffix + [middle_token]) + [1] * (len(middle)+1))
+    # attention_tensors = attention_tensors.to("cuda:0")
+    # # increase the dimension of response_tensors and attention_tensors
+    # response_tensors = response_tensors.unsqueeze(dim=0)
+    # # print("response_tensors", response_tensors)
+    # # print("attention_tensors", attention_tensors)
+    # attention_tensors = attention_tensors.unsqueeze(dim=0)
+    # phrase_cost = cost_model(response_tensors, attention_tensors)[0]
+    # # concatenate query_tensors and state_to_assign
+    # # state_to_assign = torch.cat([query_tensors, state_to_assign])
+    # # action_to_assign = 
+
+    # # print("state_to_assign", state_to_assign)
+    # # print("action_to_assign", action_to_assign)
+
+    # return phrase_cost.cpu().detach().numpy()[0][0]
+    query_FIM = torch.tensor(query_FIM)
+    original_FIM = torch.tensor(original_FIM)
+    
+    return query_FIM, original_FIM, attention_tensors
+    
+    # print("phrase_cost", phrase_cost)
+    # input("cost")
+    
+def query_inverse(query):
+    
+    prefix_token = 31000
+    suffix_token = 31001
+    middle_token = 31002
+    eot_token = 31003
+    
+    # print("query", query)
+    # input()
+    # find the index of prefix_token in query
+    prefix_idx = query.index(prefix_token)
+    # find the index of suffix_token in query
+    suffix_idx = query.index(suffix_token)
+    # find the index of middle_token in query
+    middle_idx = query.index(middle_token)
+    
+    if prefix_idx > middle_idx:
+        prefix = query[prefix_idx:]
+        middle = query[middle_idx:suffix_idx]
+        suffix = query[suffix_idx:prefix_idx]
+    elif suffix_idx > middle_idx:
+        prefix = query[prefix_idx:middle_idx]
+        middle = query[middle_idx:suffix_idx]
+        suffix = query[suffix_idx:]
+    else:
+        prefix = query[prefix_idx:suffix_idx]
+        suffix = query[suffix_idx:middle_idx]
+        middle = query[middle_idx:]
+        
+ 
+    prefix = prefix[1:]
+    middle = middle[1:]
+    suffix = suffix[1:]
+    
+    inverse_res = prefix + middle + suffix
+    return inverse_res
+    
+    # print("prefix", prefix)
+    # print("middle", middle)
+    # print("suffix", suffix)
+    # input()
+    
+
+

@@ -101,7 +101,7 @@ outputs = model(**inputs, labels=inputs["input_ids"])
 """
 
 
-class PPOTrainer(BaseTrainer):
+class DensePPOTrainer(BaseTrainer):
     """
     The PPOTrainer uses Proximal Policy Optimization to optimise language models.
     Note, this trainer is heavily inspired by the original OpenAI learning to summarize work here:
@@ -193,7 +193,7 @@ class PPOTrainer(BaseTrainer):
             gradient_accumulation_steps=config.gradient_accumulation_steps,
             project_config=ProjectConfiguration(**config.project_kwargs),
             **config.accelerator_kwargs,
-            project_dir='/home/xyq/.conda/trl/tensorboard'
+            project_dir='/home/xyq/.conda/trl/tensorboard/compare_20'
         )
 
         is_using_tensorboard = config.log_with is not None and config.log_with == "tensorboard"
@@ -548,10 +548,11 @@ class PPOTrainer(BaseTrainer):
                 raise ValueError(f"{name} must be a list of tensors - got {type(tensor_list)}")
             if not isinstance(tensor_list[0], torch.Tensor):
                 raise ValueError(f"Elements in {name} must be tensors - got {type(tensor_list[0])}")
-            if batch_size is not None and len(tensor_list) != batch_size:
-                raise ValueError(
-                    f"Batch size ({batch_size}) does not match number of examples - but got {len(tensor_list)} for: {name}"
-                )
+
+            # if batch_size is not None and len(tensor_list) != batch_size:
+            #     raise ValueError(
+            #         f"Batch size ({batch_size}) does not match number of examples - but got {len(tensor_list)} for: {name}"
+            #     )
 
         # add queries, scores and responses on the correct device
         queries = [tensor.to(self.current_device) for tensor in queries]
@@ -573,6 +574,7 @@ class PPOTrainer(BaseTrainer):
         queries: List[torch.LongTensor],
         responses: List[torch.LongTensor],
         scores: List[torch.FloatTensor],
+
     ):
         """
         Run a PPO optimisation step given a list of queries, model responses, and rewards.
@@ -588,7 +590,9 @@ class PPOTrainer(BaseTrainer):
         Returns:
             `dict[str, Any]`: A summary of the training statistics
         """
-        bs = self.config.batch_size
+        # bs = self.config.batch_size
+
+        bs = len(queries)
 
         queries, responses, scores = self._step_safety_checker(bs, queries, responses, scores)
         scores = torch.tensor(scores)
@@ -620,9 +624,9 @@ class PPOTrainer(BaseTrainer):
         t0 = time.time()
 
         t = time.time()
-
+        # print("queries", len(queries))
         model_inputs = self.prepare_model_inputs(queries, responses)
-
+        # print("model_inputs", len(model_inputs['input_ids']))
         if self.is_distributed:
             pad_first = self.tokenizer.padding_side == "left"
 
@@ -654,6 +658,9 @@ class PPOTrainer(BaseTrainer):
         full_kl_penalty = self.config.kl_penalty == "full"
 
         with torch.no_grad():
+            # print("ppo queries", len(queries))
+            # print("ppo responses", len(responses))
+            # input()
             all_logprobs, logits_or_none, values, masks = self.batched_forward_pass(
                 self.model, queries, responses, model_inputs, return_logits=full_kl_penalty
             )
@@ -707,6 +714,9 @@ class PPOTrainer(BaseTrainer):
             "returns": returns,
         }
         batch_dict.update(model_inputs)
+        # print("len_batch", len(batch_dict['input_ids']))
+        # print("model_inputs", len(model_inputs))
+        # input()
 
         t = time.time()
         all_stats = []
@@ -715,8 +725,13 @@ class PPOTrainer(BaseTrainer):
             if early_stop:
                 break
             b_inds = np.random.permutation(bs)
+
+            # print("bs", bs)
+
             for backward_batch_start in range(0, bs, self.config.backward_batch_size):
+                
                 backward_batch_end = backward_batch_start + self.config.backward_batch_size
+                # print("backward_batch_end", backward_batch_end)
                 backward_batch_inds = b_inds[backward_batch_start:backward_batch_end]
 
                 for mini_batch_start in range(0, self.config.backward_batch_size, self.config.mini_batch_size):
@@ -732,6 +747,7 @@ class PPOTrainer(BaseTrainer):
                         "advantages": batch_dict["advantages"][mini_batch_inds],
                         "returns": batch_dict["returns"][mini_batch_inds],
                     }
+
                     for k in model_inputs_names:
                         mini_batch_dict[k] = batch_dict[k][mini_batch_inds]
                     with self.accelerator.accumulate(self.model):
@@ -925,6 +941,8 @@ class PPOTrainer(BaseTrainer):
         all_masks = []
         all_values = []
 
+        # print("bs", bs)
+
         for i in range(math.ceil(bs / fbs)):
             input_kwargs = {key: value[i * fbs : (i + 1) * fbs] for key, value in model_inputs.items()}
             query_batch = queries[i * fbs : (i + 1) * fbs]
@@ -938,9 +956,16 @@ class PPOTrainer(BaseTrainer):
                 input_ids = input_kwargs["input_ids"]
                 attention_mask = input_kwargs["attention_mask"]
 
+            # for i in range(len(attention_mask)):
+                # print("len(attention_mask)", len(attention_mask))
+                # print("attention_mask", attention_mask[i])
+                # print("input_ids", input_ids[i])
+                # input()
+
             logprobs = logprobs_from_logits(logits[:, :-1, :], input_ids[:, 1:])
             masks = torch.zeros_like(attention_mask)
             masks[:, :-1] = attention_mask[:, 1:]
+            # print("attention_mask", attention_mask)
 
             for j in range(len(query_batch)):
                 if self.is_encoder_decoder:
@@ -963,6 +988,8 @@ class PPOTrainer(BaseTrainer):
             all_values.append(values)
             all_logprobs.append(logprobs)
             all_masks.append(masks)
+
+            # print("masks", masks)
 
         return (
             torch.cat(all_logprobs),
@@ -1293,9 +1320,13 @@ class PPOTrainer(BaseTrainer):
                 if isinstance(v, torch.Tensor) and v.dtype == torch.bfloat16:
                     logs[k] = v.float()
 
+            logs["env/eval_reward_mean"] = torch.mean(rewards[:self.config.mini_batch_size]).cpu().numpy().item()
+
             logs["env/reward_mean"] = torch.mean(rewards).cpu().numpy().item()
             logs["env/reward_std"] = torch.std(rewards).cpu().numpy().item()
             logs["env/reward_dist"] = rewards.cpu().numpy()
+
+            
 
             if self.config.log_with == "tensorboard":
                 # update the current step
