@@ -20,7 +20,6 @@ imdb/checkpoints/
 imdb/gpt2-imdb-cost-assignment/
 dataset/
 llama-imdb-fim/
-tensorboard/
 
 # C extensions
 *.so

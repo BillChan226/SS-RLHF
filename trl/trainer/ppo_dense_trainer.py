@@ -193,7 +193,7 @@ class DensePPOTrainer(BaseTrainer):
             gradient_accumulation_steps=config.gradient_accumulation_steps,
             project_config=ProjectConfiguration(**config.project_kwargs),
             **config.accelerator_kwargs,
-            project_dir='/home/xyq/.conda/trl/tensorboard/compare_20'
+            project_dir='/home/xyq/.conda/trl/tensorboard/dense_bound/1'
         )
 
         is_using_tensorboard = config.log_with is not None and config.log_with == "tensorboard"

@@ -698,8 +698,8 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
                     token_probabilities.append(token_probability)
                     inverse_res = torch.tensor(query_inverse(res_FIM))
                     res_inv.append(inverse_res)
-                    query_point_FIMs.append(qry)
-                    res_point_FIMs.append(res)
+                    # query_point_FIMs.append(qry)
+                    # res_point_FIMs.append(res)
 
                     # gen_rwds.append(rwd)
                     # feature.append({"input_ids": res_FIM, "attention_mask": [rest_att] * len(query_FIM) + [1] * (len(res_FIM)-len(query_FIM))})
@@ -711,27 +711,35 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
 
                 token_probabilities = [[t_p.detach().cpu().numpy().tolist()] for t_p in token_probabilities]
 
-                query_FIMs.extend(query_point_FIMs)
-                res_FIMs.extend(res_point_FIMs)
+                # query_FIMs.extend(query_point_FIMs)
+                # res_FIMs.extend(res_point_FIMs)
                 rwds = [rwd] * len(res_inv)
-                # kmeans = KMeans(n_clusters=3)
-                # kmeans.fit(token_probabilities)
+                kmeans = KMeans(n_clusters=3)
+                kmeans.fit(token_probabilities)
 
-                # # Get cluster assignments for each data point
-                # cluster_assignments = kmeans.labels_
+                # Get cluster assignments for each data point
+                cluster_assignments = kmeans.labels_
                 
-                # # for 3 clusters, randomly choose one point from each cluster
-                # for i in range(3):
-                #     cluster = np.where(cluster_assignments == i)[0]
-                #     # randomly choose one from each cluster
-                #     elected_tensor = res_inv[np.random.choice(cluster)]
-                #     elected_text = tokenizer.batch_decode(elected_tensor.unsqueeze(dim=0))
-                #     elected_rwd = sentiment_pipe(elected_text, **sent_kwargs)[0][1]["score"]
-                #     # print("elected_rwd", elected_rwd)
-                #     # update the rwds in the same cluster to elected_rwd
-                #     for idx in cluster:
-                #         # print("idx", idx)
-                #         rwds[idx] = torch.tensor(elected_rwd)
+                # for 3 clusters, randomly choose one point from each cluster
+                for i in range(3):
+                    cluster = np.where(cluster_assignments == i)[0]
+                    if len(cluster) < 1:
+                        continue
+                    # randomly choose one from each cluster
+                    res_new = ppo_trainer.generate(qry, return_prompt=False, **generation_kwargs)[0].cpu().numpy().tolist()
+
+                    res_tensor = torch.tensor(res_FIM).to(device)
+                    elected_tensor = torch.cat([qry, res_new])
+                    # elected_tensor = res_inv[np.random.choice(cluster)]
+                    elected_text = tokenizer.batch_decode(elected_tensor.unsqueeze(dim=0))
+                    elected_rwd = sentiment_pipe(elected_text, **sent_kwargs)[0][1]["score"]
+                    # print("elected_rwd", elected_rwd)
+                    # update the rwds in the same cluster to elected_rwd
+                    for idx in cluster:
+                        # print("idx", idx)
+                        rwds[idx] = torch.tensor(elected_rwd)
+                        query_FIMs.append(qry)
+                        res_FIMs.append(res_tensor)
                         
                 gen_rwds.extend(rwds)
                 # print("rwds", rwds)
