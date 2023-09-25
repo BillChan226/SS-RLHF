@@ -241,6 +241,8 @@ class ConstantLengthDataset(IterableDataset):
 
 def prepare_sample_text(item):
     """Prepare the text from a sample of the dataset."""
+    # print("item", item)
+    example = item["chosen"]
     # text = f"Question: {example['question']}\n\nAnswer: {example['response_j']}"
     # return text
     # print("item", item)
@@ -282,7 +284,7 @@ def prepare_sample_text(item):
     # # item["reference"] = modified_reference
     # print(item["text"])
     # input()
-    return item["text"]
+    return example
 
 def PSM(example):
     # Assuming your dataset contains a "text" field for the document

@@ -20,6 +20,14 @@ imdb/checkpoints/
 imdb/gpt2-imdb-cost-assignment/
 dataset/
 llama-imdb-fim/
+non-toxical/checkpoints/
+non-toxical/checkpoints_llama2_FIM_imdb/
+non-toxical/gcl/
+non-toxical/gpt2-imdb-cost-assignment/
+non-toxical/llama_7b_harmless/
+non-toxical/llama-2-7b-hh-fim/
+imdb/llama-2-13b-imdb/
+imdb/gcl/
 
 # C extensions
 *.so

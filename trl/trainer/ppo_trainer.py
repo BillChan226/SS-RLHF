@@ -193,7 +193,7 @@ class PPOTrainer(BaseTrainer):
             gradient_accumulation_steps=config.gradient_accumulation_steps,
             project_config=ProjectConfiguration(**config.project_kwargs),
             **config.accelerator_kwargs,
-            project_dir='/home/xyq/.conda/trl/tensorboard'
+            project_dir='/data/xyq/trl/tensorboard/hh/llama-7-baseline'
         )
 
         is_using_tensorboard = config.log_with is not None and config.log_with == "tensorboard"

@@ -15,7 +15,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 import sys
-sys.path.append("/data/xyq/trl")
+sys.path.append("/home/xyq/.conda/trl")
 import torch
 from datasets import load_dataset
 from dataset import query_fim, query_inverse
@@ -275,8 +275,8 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
             argu_idx.sort()
 
             for idx in range(len(argu_idx)):
-                # print("res", res)
-                # input("hold")
+                print("res", res)
+                input("hold")
                 query_FIM, original_FIM = query_fim(idx, argu_idx, res)
                 query_FIM = query_FIM.to(device)
             

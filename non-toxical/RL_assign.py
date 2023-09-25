@@ -15,7 +15,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 import sys
-sys.path.append("/data/xyq/trl")
+sys.path.append("/home/xyq/.conda/trl")
 import torch
 from datasets import load_dataset
 from dataset import query_fim, query_inverse
@@ -23,11 +23,11 @@ from peft import LoraConfig, TaskType, get_peft_model
 from tqdm import tqdm
 import torch.nn as nn
 from transformers import AutoTokenizer, HfArgumentParser, pipeline,  AutoModelForSequenceClassification, AutoModelForSeq2SeqLM, AutoModelForCausalLM
-import numpy as np
+
 from trl import AutoModelForCausalLMWithValueHead, AutoModelForSeq2SeqLMWithValueHead, PPOConfig, DensePPOTrainer, set_seed
 from trl.core import LengthSampler
 from typing import Any, Dict, List, Optional, Tuple, Union
-from sklearn.cluster import KMeans
+
 tqdm.pandas()
 
 
@@ -191,7 +191,6 @@ if ppo_trainer.accelerator.num_processes == 1:
     device = 0 if torch.cuda.is_available() else "cpu"  # to avoid a `pipeline` bug
 sentiment_pipe = pipeline("sentiment-analysis", model="lvwerra/distilbert-imdb", device=device)
 
-print("sentiment_pipe", sentiment_pipe.device)
 
 # cost_model_name = "lvwerra/distilbert-imdb"
 
@@ -222,7 +221,6 @@ generation_kwargs = {
 }
 
 rest_att = 0.2
-num_sample = 10
 
 for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
     query_tensors = batch["input_ids"]
@@ -231,27 +229,14 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
     response_tensors = ppo_trainer.generate(query_tensors, return_prompt=False, **generation_kwargs)
     # print("response_tensors", response_tensors)
     batch["response"] = tokenizer.batch_decode(response_tensors)
-
-
-    # Compute sentiment score
-    gen_texts = [q + r for q, r in zip(batch["query"], batch["response"])]
-    gen_rwds = sentiment_pipe(gen_texts, **sent_kwargs)
-
-    gen_rwds = [torch.tensor(output[1]["score"]) for output in gen_rwds]
-
     
     batch_FIM = []
     res_FIMs = []
     query_FIMs = []
-
-
     
     for qry, res in zip(query_tensors, response_tensors):
-        res = torch.cat([qry, res])
+        # response_list = res.cpu().numpy().tolist()
         argu_idx = []
-
-
-
         for idx, token_input in enumerate(res):
             #if token == 29889:
             
@@ -267,93 +252,46 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
 
             # punctuation = [11, 13, 764, 837, 0, 30, 29847, 16317, 50256]
             punctuation = [29889, 29892, 29973,29991, 18598, 856, 29936]
-
+            # print("token_input", token_input)
             if token_input in punctuation:
                 argu_idx.append(idx)
         
+        phrase_cost = []
+
+        
         if len(argu_idx) > 2 and argu_idx[-1] < len(res) - 3:
             argu_idx.sort()
-
+            # print("res", res)
             for idx in range(len(argu_idx)):
-                # print("res", res)
-                # input("hold")
-                query_FIM, original_FIM = query_fim(idx, argu_idx, res)
+                query_FIM, original_FIM, attention_original_FIM = query_fim(idx, argu_idx, res)
+                # print("query_FIM", query_FIM)
+                # print("original_FIM", original_FIM)
+                # print("attention_original_FIM", attention_original_FIM)
                 query_FIM = query_FIM.to(device)
-            
-                res_inv = []     
-                query_point_FIMs = []
-                res_point_FIMs = []
-                token_probabilities = []    
-                for i in range(num_sample): 
-                    
+                
+                # print("query_FIM", query_FIM)
+                # input("query")
+                # print("shape of query", query_FIM.shape)
+                # print("query device", query_FIM.device)
+                # print("model device", model.device)  
+                # feature = []
+                # feature.append({"input_ids": original_FIM.cpu().numpy().tolist(), "attention_mask": attention_original_FIM.cpu().numpy().tolist()})
+                # attention_tensors = [attention_original_FIM.cpu().numpy().tolist()]    
+                res_inv = []         
+                for i in range(3): 
+                #     res_FIM.append(ppo_trainer.generate(query_FIM, return_prompt=True, **generation_kwargs)[0].cpu().numpy().tolist())
+                # # res_FIM_tensors = res_FIM[:, query_FIM.shape[0] :]
+                # # input("hold on")
+                #     attention_tensors.append(torch.tensor([rest_att] * len(query_FIM) + [1] * (len(res_FIM[0])-len(query_FIM))).cpu().numpy().tolist())
+                    query_FIMs.append(query_FIM)
                     res_FIM = ppo_trainer.generate(query_FIM, return_prompt=True, **generation_kwargs)[0].cpu().numpy().tolist()
-
-                    res_tensor = torch.tensor(res_FIM).to(device)
-                    sequence_outputs = ppo_trainer.model(res_tensor.unsqueeze(dim=0))
-                    if len(sequence_outputs[0][0]) - query_FIM.shape[0] < 3:
-                        continue
-                    
-                    first_3_token_logits = sequence_outputs[0][0][query_FIM.shape[0]-1:query_FIM.shape[0]+2, :]
-                    # print("first_3_token_logits.shape[0", first_3_token_logits.shape[0])
-                    
-                    # Calculate the softmax probabilities for the first 3 tokens
-                    first_3_token_probabilities = torch.softmax(first_3_token_logits, dim=-1)
-                    # print("first_3_token_probabilities", first_3_token_probabilities)
-                    token_probability = 1
-                    for idx, token_distribution in enumerate(first_3_token_probabilities):
-                        # print("token_distribution", token_distribution.shape)
-                        if len(token_distribution) < 3:
-                            print("token_distribution", token_distribution)
-                            print("len(sequence_outputs[0][0] - query_FIM.shape[0])", len(sequence_outputs[0][0] - query_FIM.shape[0]))
-
-                        token_probability *= token_distribution[res_FIM[query_FIM.shape[0]+idx]]
-
-                    token_probabilities.append(token_probability)
                     inverse_res = torch.tensor(query_inverse(res_FIM))
                     res_inv.append(inverse_res)
-                    query_point_FIMs.append(query_FIM)
-                    res_point_FIMs.append(torch.tensor(res_FIM[query_FIM.shape[0] :]))
-
-                    # gen_rwds.append(rwd)
+                    # take the remaining of res_FIM by filtering out query part
+                    # print("res_FIM", res_FIM)
+                    res_FIMs.append(torch.tensor(res_FIM[query_FIM.shape[0] :]))
                     # feature.append({"input_ids": res_FIM, "attention_mask": [rest_att] * len(query_FIM) + [1] * (len(res_FIM)-len(query_FIM))})
-                # print("token_probabilities", token_probabilities)
                 
-                # create an array of 20 tensors that are all 0
-                if len(token_probabilities) < 3:
-                    continue
-
-                token_probabilities = [[t_p.detach().cpu().numpy().tolist()] for t_p in token_probabilities]
-
-                query_FIMs.extend(query_point_FIMs)
-                res_FIMs.extend(res_point_FIMs)
-                rwds = [torch.tensor(0)] * len(res_inv)
-                kmeans = KMeans(n_clusters=3)
-                kmeans.fit(token_probabilities)
-
-                # Get cluster assignments for each data point
-                cluster_assignments = kmeans.labels_
-                
-                # for 3 clusters, randomly choose one point from each cluster
-                for i in range(3):
-                    cluster = np.where(cluster_assignments == i)[0]
-                    if len(cluster) < 1:
-                        continue
-                    # randomly choose one from each cluster
-                    elected_tensor = res_inv[np.random.choice(cluster)]
-                    elected_text = tokenizer.batch_decode(elected_tensor.unsqueeze(dim=0))
-                    elected_rwd = sentiment_pipe(elected_text, **sent_kwargs)[0][1]["score"]
-                    # print("elected_rwd", elected_rwd)
-                    # update the rwds in the same cluster to elected_rwd
-                    for idx in cluster:
-                        # print("idx", idx)
-                        rwds[idx] = torch.tensor(elected_rwd)
-                        
-                gen_rwds.extend(rwds)
-                # print("rwds", rwds)
-                    
-                
-
-
                 # res_FIM = torch.
                 # attention_tensors = torch.tensor(attention_tensors)
                 # # print("shape of attention", attention_tensors.shape)
@@ -402,10 +340,9 @@ for epoch, batch in tqdm(enumerate(ppo_trainer.dataloader)):
                 
     # Compute sentiment score
     texts = [q + r for q, r in zip(batch["query"], batch["response"])] + texts_FIM
-    # pipe_outputs = sentiment_pipe(texts, **sent_kwargs)
+    pipe_outputs = sentiment_pipe(texts, **sent_kwargs)
 
-    # rewards = [torch.tensor(output[1]["score"]) for output in pipe_outputs]
-    rewards = gen_rwds
+    rewards = [torch.tensor(output[1]["score"]) for output in pipe_outputs]
     
     # print("query_tensors", query_tensors)
     query_tensors = query_tensors + query_FIMs

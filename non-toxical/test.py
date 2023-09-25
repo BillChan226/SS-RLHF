@@ -8,7 +8,7 @@ from peft import LoraConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, logging, set_seed
 import sys
-sys.path.append("/home/xyq/.conda/SS-RLHF/")
+sys.path.append("/data/xyq/trl")
 from trl import SFTTrainer
 from trl.trainer import ConstantLengthDataset
 import torch
@@ -18,9 +18,10 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-# import os
-# os.environ['CURL_CA_BUNDLE'] = ''
-
+import os
+os.environ['CURL_CA_BUNDLE'] = ''
+# dataset = load_dataset("Anthropic/hh-rlhf")
+# input("downloaded")
 # model_name = '/home/xyq/.conda/SS-RLHF/model/gpt2-finetuned'
 model_name = 'upstage/llama-30b-instruct-2048'
 # model_name = 'meta-llama/Llama-2-13b-hf'

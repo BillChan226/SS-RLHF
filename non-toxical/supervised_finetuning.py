@@ -481,7 +481,7 @@ from peft import LoraConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, TrainingArguments, logging, set_seed
 import sys
-sys.path.append("/data/xyq/trl")
+sys.path.append("/home/xyq/.conda/trl/")
 from trl import SFTTrainer
 from trl.trainer import ConstantLengthDataset
 
@@ -508,10 +508,10 @@ os.environ['CURL_CA_BUNDLE'] = ''
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str, default="/data/xyq/model_cache/hub/models--meta-llama--Llama-2-13b-hf/snapshots/db6b8eb1feabb38985fdf785a89895959e944936/")
+    parser.add_argument("--model_path", type=str, default="/home/xyq/.cache/huggingface/hub/models--meta-llama--Llama-2-7b-hf/snapshots/6fdf2e60f86ff2481f2241aaee459f85b5b0bbb9/")
     # parser.add_argument("--dataset_name", type=str, default="lvwerra/stack-exchange-paired")
-    parser.add_argument("--dataset_name", type=str, default="imdb")
-    parser.add_argument("--subset", type=str, default="data/finetune")
+    parser.add_argument("--dataset_name", type=str, default="Anthropic/hh-rlhf")
+    parser.add_argument("--subset", type=str, default="harmless-base")
     parser.add_argument("--split", type=str, default="test")
     parser.add_argument("--size_valid_set", type=int, default=4000)
     parser.add_argument("--streaming", action="store_true")
@@ -572,7 +572,7 @@ def print_trainable_parameters(model):
         f"trainable params: {trainable_params} || all params: {all_param} || trainable%: {100 * trainable_params / all_param}"
     )
 
-tokenizer = AutoTokenizer.from_pretrained("/data/xyq/model_cache/hub/models--meta-llama--Llama-2-13b-hf/snapshots/db6b8eb1feabb38985fdf785a89895959e944936/")
+tokenizer = AutoTokenizer.from_pretrained("/home/xyq/.cache/huggingface/hub/models--meta-llama--Llama-2-7b-hf/snapshots/6fdf2e60f86ff2481f2241aaee459f85b5b0bbb9/")
 
 # tokenizer = AutoTokenizer.from_pretrained("/home/xyq/.cache/huggingface/hub/models--gpt2-xl/snapshots/33cdb5c0db5423c1879b1b9f16c352988e8754a8/")
 # tokenizer = AutoTokenizer.from_pretrained("/home/xyq/.cache/huggingface/hub/models--meta-llama--Llama-2-7b-hf/snapshots/6fdf2e60f86ff2481f2241aaee459f85b5b0bbb9")  #  ("lvwerra/gpt2-imdb")
@@ -677,13 +677,13 @@ def run_training(args, train_data, val_data):
         fp16=not args.no_fp16,
         bf16=args.bf16,
         weight_decay=args.weight_decay,
-        run_name="llama-2-13b-imdb-finetuned",
+        run_name="llama-2-7b-harmless-finetuned",
         report_to="tensorboard",
         ddp_find_unused_parameters=False,
     )
 
     model = AutoModelForCausalLM.from_pretrained(
-        args.model_path, load_in_8bit=True, device_map="auto"#device_map={"": Accelerator().process_index}
+        args.model_path, load_in_8bit=True, device_map={"": Accelerator().process_index}
     )
 
     # model = AutoModelForCausalLM.from_pretrained(
